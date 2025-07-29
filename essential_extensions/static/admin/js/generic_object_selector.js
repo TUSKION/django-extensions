@@ -1,132 +1,154 @@
 /**
- * Generic Object Selector JavaScript
+ * Generic Object Selector for Django Admin
  * 
- * This script provides dynamic object selection for generic foreign keys
- * in the Django admin interface. It populates the object selector dropdown
- * based on the selected content type.
+ * This script handles the dynamic object selection dropdown for any admin
+ * interface that uses generic foreign keys with ContentTypes.
+ * 
+ * Requirements:
+ * - Content type field: id_content_type
+ * - Object selector field: id_object_selector  
+ * - Hidden object ID field: id_object_id
+ * - AJAX endpoint: {model-admin-url}/get-objects/
  */
 
-(function($) {
+(function() {
     'use strict';
 
-    // Initialize when document is ready
-    $(document).ready(function() {
-        initializeGenericObjectSelector();
+    // Wait for DOM to be ready
+    document.addEventListener('DOMContentLoaded', function() {
+        initializeObjectSelector();
     });
 
-    function initializeGenericObjectSelector() {
-        // Find all content type selectors
-        $('select[name="content_type"]').each(function() {
-            var $contentTypeSelect = $(this);
-            var $objectSelector = $contentTypeSelect.closest('form').find('select[name="object_selector"]');
-            var $objectIdField = $contentTypeSelect.closest('form').find('input[name="object_id"]');
-            
-            if ($objectSelector.length && $objectIdField.length) {
-                // Bind change event to content type selector
-                $contentTypeSelect.on('change', function() {
-                    var contentTypeId = $(this).val();
-                    updateObjectSelector($objectSelector, $objectIdField, contentTypeId);
-                });
-                
-                // Initialize on page load if content type is already selected
-                if ($contentTypeSelect.val()) {
-                    updateObjectSelector($objectSelector, $objectIdField, $contentTypeSelect.val());
-                }
-            }
-        });
+    function initializeObjectSelector() {
+        const contentTypeField = document.getElementById('id_content_type');
+        const objectSelectorField = document.getElementById('id_object_selector');
+        const objectIdField = document.getElementById('id_object_id');
 
-        // Handle object selector changes
-        $('select[name="object_selector"]').on('change', function() {
-            var $objectIdField = $(this).closest('form').find('input[name="object_id"]');
-            var selectedObjectId = $(this).val();
-            
-            if (selectedObjectId) {
-                $objectIdField.val(selectedObjectId);
-            } else {
-                $objectIdField.val('');
-            }
-        });
-    }
-
-    function updateObjectSelector($objectSelector, $objectIdField, contentTypeId) {
-        if (!contentTypeId) {
-            // No content type selected, clear object selector
-            $objectSelector.html('<option value="">First select a content type above</option>');
-            $objectIdField.val('');
+        if (!contentTypeField || !objectSelectorField || !objectIdField) {
+            console.log('Generic object selector: Required fields not found, skipping initialization');
             return;
         }
 
-        // Show loading state
-        $objectSelector.html('<option value="">Loading objects...</option>');
-        $objectIdField.val('');
+        console.log('Generic object selector: Initializing...');
 
-        // Get the URL for the AJAX endpoint
-        var url = getObjectsUrl($objectSelector);
-        
-        // Make AJAX request to get objects for this content type
-        $.ajax({
-            url: url,
-            data: {
-                'content_type': contentTypeId
-            },
-            dataType: 'json',
-            success: function(data) {
-                var options = '<option value="">Select an object...</option>';
-                
-                if (data.objects && data.objects.length > 0) {
-                    $.each(data.objects, function(index, obj) {
-                        options += '<option value="' + obj.id + '">' + obj.name + '</option>';
-                    });
-                } else {
-                    options = '<option value="">No objects found for this content type</option>';
-                }
-                
-                $objectSelector.html(options);
-            },
-            error: function(xhr, status, error) {
-                console.error('Error loading objects:', error);
-                $objectSelector.html('<option value="">Error loading objects</option>');
+        // Add change listener to content type field
+        contentTypeField.addEventListener('change', function() {
+            const contentTypeId = this.value;
+            console.log('Content type changed to:', contentTypeId);
+            
+            if (contentTypeId) {
+                loadObjectsForContentType(contentTypeId, objectSelectorField);
+            } else {
+                resetObjectSelector(objectSelectorField);
             }
+        });
+
+        // Add change listener to object selector field
+        objectSelectorField.addEventListener('change', function() {
+            const selectedObjectId = this.value;
+            console.log('Object selector changed to:', selectedObjectId);
+            
+            // Update the hidden object_id field
+            objectIdField.value = selectedObjectId;
+            console.log('Set object_id field to:', selectedObjectId);
+        });
+
+        // If content type is already selected (editing existing), load objects
+        if (contentTypeField.value) {
+            console.log('Content type pre-selected, loading objects...');
+            loadObjectsForContentType(contentTypeField.value, objectSelectorField);
+        }
+    }
+
+    function loadObjectsForContentType(contentTypeId, objectSelectorField) {
+        console.log('Loading objects for content type:', contentTypeId);
+        
+        // Show loading state
+        objectSelectorField.innerHTML = '<option value="">Loading...</option>';
+        objectSelectorField.disabled = true;
+
+        // Get the current admin URL to build the AJAX endpoint
+        const currentPath = window.location.pathname;
+        const basePath = currentPath.replace(/\/add\/$|\/\d+\/change\/$/, '');
+        const ajaxUrl = basePath + '/get-objects/';
+        
+        console.log('AJAX URL:', ajaxUrl);
+
+        // Make AJAX request
+        fetch(ajaxUrl + '?content_type=' + encodeURIComponent(contentTypeId), {
+            method: 'GET',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRFToken': getCSRFToken()
+            }
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Network response was not ok: ' + response.statusText);
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log('Received objects:', data);
+            populateObjectSelector(objectSelectorField, data.objects || []);
+        })
+        .catch(error => {
+            console.error('Error loading objects:', error);
+            objectSelectorField.innerHTML = '<option value="">Error loading objects</option>';
+        })
+        .finally(() => {
+            objectSelectorField.disabled = false;
         });
     }
 
-    function getObjectsUrl($objectSelector) {
-        // Try to get the URL from the form action or construct it
-        var form = $objectSelector.closest('form');
-        var formAction = form.attr('action') || window.location.pathname;
-        
-        // Remove any existing query parameters
-        var baseUrl = formAction.split('?')[0];
-        
-        // Construct the objects URL
-        // This assumes the URL pattern follows Django's admin URL structure
-        var urlParts = baseUrl.split('/');
-        var appLabel = '';
-        var modelName = '';
-        
-        // Try to extract app_label and model_name from the URL
-        for (var i = 0; i < urlParts.length; i++) {
-            if (urlParts[i] === 'admin') {
-                if (i + 2 < urlParts.length) {
-                    appLabel = urlParts[i + 1];
-                    modelName = urlParts[i + 2];
-                    break;
-                }
-            }
+    function populateObjectSelector(objectSelectorField, objects) {
+        // Clear existing options
+        objectSelectorField.innerHTML = '';
+
+        // Add default option
+        const defaultOption = document.createElement('option');
+        defaultOption.value = '';
+        defaultOption.textContent = objects.length > 0 ? 'Select an object...' : 'No objects available';
+        objectSelectorField.appendChild(defaultOption);
+
+        // Add objects as options
+        objects.forEach(function(obj) {
+            const option = document.createElement('option');
+            option.value = obj.id;
+            option.textContent = obj.name;
+            objectSelectorField.appendChild(option);
+        });
+
+        // If this is an edit form and we have a pre-selected value, select it
+        const currentValue = objectSelectorField.getAttribute('data-current-value');
+        if (currentValue) {
+            objectSelectorField.value = currentValue;
+            console.log('Pre-selected object:', currentValue);
         }
-        
-        if (appLabel && modelName) {
-            return baseUrl + 'get-objects/';
-        } else {
-            // Fallback: try to construct from current page
-            return window.location.pathname.replace(/\/change\/.*$/, '/get-objects/');
-        }
+
+        console.log('Populated selector with', objects.length, 'objects');
     }
 
-    // Expose functions for potential external use
-    window.GenericObjectSelector = {
-        initialize: initializeGenericObjectSelector,
-        updateObjectSelector: updateObjectSelector
-    };
+    function resetObjectSelector(objectSelectorField) {
+        objectSelectorField.innerHTML = '<option value="">First select a content type above</option>';
+        objectSelectorField.disabled = false;
+    }
 
-})(django.jQuery); 
+    function getCSRFToken() {
+        // Try to get CSRF token from various sources
+        const csrfInput = document.querySelector('[name=csrfmiddlewaretoken]');
+        if (csrfInput) {
+            return csrfInput.value;
+        }
+
+        const csrfCookie = document.cookie
+            .split('; ')
+            .find(row => row.startsWith('csrftoken='));
+        if (csrfCookie) {
+            return csrfCookie.split('=')[1];
+        }
+
+        console.warn('CSRF token not found');
+        return '';
+    }
+})(); 
