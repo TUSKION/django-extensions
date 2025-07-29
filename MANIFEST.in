@@ -1,0 +1,24 @@
+include README.md
+include LICENSE
+include MANIFEST.in
+include pyproject.toml
+
+recursive-include essential_extensions/templates *
+recursive-include essential_extensions/static *
+recursive-include essential_extensions/migrations *.py
+recursive-exclude essential_extensions/migrations __pycache__
+
+global-exclude *.pyc
+global-exclude *.pyo
+global-exclude *.pyd
+global-exclude __pycache__
+global-exclude .DS_Store
+global-exclude .git*
+global-exclude .hg*
+global-exclude .svn*
+global-exclude *.egg-info
+global-exclude .tox
+global-exclude .venv
+global-exclude venv
+global-exclude env
+global-exclude .env 
