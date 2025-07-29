@@ -1,11 +1,12 @@
 # Django Essential Extensions
 
-A focused Django package providing essential extensions for image management and subdomain redirects with advanced admin interface and middleware support.
+A focused Django package providing essential extensions for image management, subdomain redirects, and SEO optimization with advanced admin interface and middleware support.
 
 ## Features
 
 - **ImageExtension**: Generic image management with support for multiple image types, ordering, and featured images
 - **SubdomainRedirect**: Flexible subdomain redirect system with support for different redirect types
+- **SEOMixin**: Mixin-based SEO system for easy meta tag management across any Django model
 - **Advanced Admin Interface**: Enhanced Django admin with dynamic object selectors, image previews, and validation
 - **Middleware Support**: Built-in middleware for automatic subdomain redirects and admin IP restrictions
 - **Custom Widgets**: Specialized form widgets for better user experience
@@ -394,3 +395,349 @@ MIT License - see LICENSE file for details.
 - **Documentation**: [GitHub Wiki](https://github.com/TUSKION/django-extensions/wiki)
 - **Issues**: [GitHub Issues](https://github.com/TUSKION/django-extensions/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/TUSKION/django-extensions/discussions)
+
+## SEOMixin
+
+The SEOMixin provides a flexible, mixin-based system for managing SEO metadata across Django models. It supports multiple data sources, fallback mechanisms, and template tags for easy integration.
+
+### Adding SEO to a Model
+
+```python
+from essential_extensions.mixins import SEOMixin
+
+class GameProject(models.Model, SEOMixin):
+    title = models.CharField(max_length=200)
+    description = models.TextField()
+    summary = models.TextField(blank=True)
+    extra_data = models.JSONField(default=dict, blank=True)
+    
+    # Define SEO field mapping
+    _seo = {
+        'title': 'title',
+        'description': 'summary',  # Use summary field for description
+        'keywords': ['title', 'description'],  # Generate keywords from these fields
+        'image': 'hero_image',
+        'author': 'GhostJam Team',  # Static value
+        'robots': 'index, follow',
+        'keyword_categories': 'categories',  # Dynamic keywords from categories
+    }
+    
+    def get_absolute_url(self):
+        return reverse('game_detail', args=[self.slug])
+```
+
+### SEO Methods
+
+The mixin provides several methods for accessing SEO data:
+
+```python
+game = GameProject.objects.get(title='Amazing Game')
+
+# Get SEO values
+title = game.get_seo_title()
+description = game.get_seo_description()
+keywords = game.get_seo_keywords()
+image = game.get_seo_image()
+author = game.get_seo_author()
+robots = game.get_seo_robots()
+canonical_url = game.get_seo_canonical_url()
+
+# Get any SEO value with fallbacks
+custom_value = game.get_seo_value('custom_field', 'default_value')
+```
+
+### SEO Field Mapping
+
+The `_seo` class attribute maps SEO properties to model fields or static values:
+
+```python
+class BlogPost(models.Model, SEOMixin):
+    title = models.CharField(max_length=200)
+    content = models.TextField()
+    categories = models.ManyToManyField(Category)
+    tags = models.ManyToManyField(Tag)
+    
+    _seo = {
+        # Direct field mapping
+        'title': 'title',
+        'description': 'content',
+        
+        # Static values
+        'author': 'GhostJam Team',
+        'robots': 'index, follow',
+        
+        # Dynamic keyword generation
+        'keyword_categories': 'categories',  # Uses category names
+        'keyword_tags': 'tags',  # Uses tag names
+        
+        # Custom field with fallback
+        'image': 'featured_image',
+    }
+```
+
+### Data Source Priority
+
+The mixin uses a priority system for SEO values:
+
+1. **extra_data JSON field** - Highest priority for overrides
+2. **_seo mapping** - Field mapping or static values
+3. **Settings defaults** - Fallback to `SEO_DEFAULTS` setting
+4. **Empty string** - Final fallback
+
+```python
+# Priority for description:
+# 1. extra_data.get('description') - if exists
+# 2. self.summary - if exists and not empty (from _seo mapping)
+# 3. settings.SEO_DEFAULTS.get('description') - if exists
+# 4. '' (empty string) - final fallback
+```
+
+### Dynamic Keyword Generation
+
+The system can automatically generate keywords from model fields:
+
+```python
+class GameProject(models.Model, SEOMixin):
+    title = models.CharField(max_length=200)
+    categories = models.ManyToManyField(Category)
+    tags = models.ManyToManyField(Tag)
+    
+    _seo = {
+        'keyword_categories': 'categories',  # Uses category.title
+        'keyword_tags': 'tags',  # Uses tag.name
+        'keyword_title': 'title',  # Uses title field
+    }
+
+# This will generate keywords from:
+# - Category titles
+# - Tag names  
+# - Game title
+# - Plus any manually set keywords
+```
+
+### Template Tags
+
+#### Loading the Tags
+
+```django
+{% load seo_tags %}
+```
+
+#### Rendering Meta Tags
+
+```django
+<!-- Using an object with SEO methods -->
+{% render_meta game %}
+
+<!-- Using a meta dictionary -->
+{% render_meta meta %}
+
+<!-- With custom overrides -->
+{% render_meta game title="Custom Title" description="Custom Description" %}
+```
+
+#### Meta Tag Template
+
+The `render_meta` tag uses the `seo/meta_tags.html` template:
+
+```django
+<!-- seo/meta_tags.html -->
+{% if title %}
+    <title>{{ title }}</title>
+    <meta property="og:title" content="{{ title }}">
+    <meta name="twitter:title" content="{{ title }}">
+{% endif %}
+
+{% if description %}
+    <meta name="description" content="{{ description }}">
+    <meta property="og:description" content="{{ description }}">
+    <meta name="twitter:description" content="{{ description }}">
+{% endif %}
+
+{% if keywords %}
+    <meta name="keywords" content="{{ keywords|join:', ' }}">
+{% endif %}
+
+{% if image %}
+    <meta property="og:image" content="{{ image }}">
+    <meta name="twitter:image" content="{{ image }}">
+{% endif %}
+
+{% if author %}
+    <meta name="author" content="{{ author }}">
+    <meta property="article:author" content="{{ author }}">
+{% endif %}
+
+{% if robots %}
+    <meta name="robots" content="{{ robots }}">
+{% endif %}
+
+{% if canonical_url %}
+    <link rel="canonical" href="{{ canonical_url }}">
+{% endif %}
+```
+
+### Complete Example
+
+#### Model Setup
+
+```python
+from essential_extensions.mixins import SEOMixin
+
+class GameProject(models.Model, SEOMixin):
+    title = models.CharField(max_length=200)
+    summary = models.TextField()
+    hero_image = models.ImageField(upload_to='games/')
+    categories = models.ManyToManyField(Category)
+    extra_data = models.JSONField(default=dict, blank=True)
+    
+    _seo = {
+        'title': 'title',
+        'description': 'summary',
+        'image': 'hero_image',
+        'author': 'GhostJam Team',
+        'robots': 'index, follow',
+        'keyword_categories': 'categories',
+    }
+    
+    def get_absolute_url(self):
+        return reverse('game_detail', args=[self.slug])
+```
+
+#### View Implementation
+
+```python
+from django.shortcuts import get_object_or_404
+from django.http import HttpRequest
+
+def game_detail(request: HttpRequest, slug: str):
+    game = get_object_or_404(GameProject, slug=slug)
+    
+    # Create meta object for template
+    meta = {
+        'title': game.get_seo_title(),
+        'description': game.get_seo_description(),
+        'keywords': game.get_seo_keywords(),
+        'image': game.get_seo_image(),
+        'author': game.get_seo_author(),
+        'robots': game.get_seo_robots(),
+        'canonical_url': request.build_absolute_uri(game.get_absolute_url()),
+    }
+    
+    return render(request, 'games/detail.html', {
+        'game': game,
+        'meta': meta
+    })
+```
+
+#### Template Usage
+
+```django
+{% extends "base.html" %}
+{% load seo_tags %}
+
+{% block head %}
+    {% render_meta meta %}
+{% endblock %}
+
+{% block content %}
+    <h1>{{ game.title }}</h1>
+    <p>{{ game.summary }}</p>
+    <!-- Rest of your content -->
+{% endblock %}
+```
+
+### Settings Configuration
+
+#### SEO Defaults
+
+```python
+# settings.py
+
+SEO_DEFAULTS = {
+    'description': 'GhostJam - Indie Game Development Community',
+    'keywords': ['indie games', 'game development', 'game jam'],
+    'author': 'GhostJam Team',
+    'robots': 'index, follow',
+    'image': '/static/images/default-og-image.jpg',
+}
+```
+
+#### Custom Settings
+
+```python
+# settings.py
+
+# Custom SEO settings
+SEO_DEFAULT_TITLE_SUFFIX = ' - GhostJam'
+SEO_MAX_DESCRIPTION_LENGTH = 160
+SEO_MAX_KEYWORDS = 10
+```
+
+### Best Practices
+
+#### Model Configuration
+
+1. **Use descriptive field mapping**: Map SEO fields to appropriate model fields
+2. **Provide fallbacks**: Always have sensible defaults
+3. **Use static values**: For consistent values like author or robots
+4. **Leverage dynamic keywords**: Automatically generate keywords from related fields
+
+#### Template Usage
+
+1. **Use the meta object**: Pass a meta object to templates for consistency
+2. **Provide overrides**: Allow custom meta tags when needed
+3. **Check for existence**: Always verify meta data exists before using
+4. **Use canonical URLs**: Always provide canonical URLs for SEO
+
+#### Data Management
+
+1. **Keep extra_data clean**: Use extra_data for overrides, not primary data
+2. **Update regularly**: Keep SEO data current with content changes
+3. **Test meta tags**: Verify meta tags render correctly
+4. **Monitor performance**: Ensure SEO methods don't impact performance
+
+### Troubleshooting
+
+#### Common Issues
+
+1. **Meta tags not showing**: Check if the object has SEO methods
+2. **Wrong values**: Verify the data source priority chain
+3. **Performance issues**: Ensure SEO methods are efficient
+4. **Missing defaults**: Check if settings.SEO_DEFAULTS is configured
+
+#### Debug Tips
+
+```python
+# Check SEO values for an object
+game = GameProject.objects.get(title='Amazing Game')
+
+print(f"Title: {game.get_seo_title()}")
+print(f"Description: {game.get_seo_description()}")
+print(f"Keywords: {game.get_seo_keywords()}")
+print(f"Image: {game.get_seo_image()}")
+
+# Check extra_data
+print(f"Extra data: {game.extra_data}")
+
+# Check _seo mapping
+print(f"SEO mapping: {game._seo}")
+```
+
+#### Template Debugging
+
+```django
+{% load seo_tags %}
+
+<!-- Debug meta object -->
+{% if meta %}
+    <p>Meta object exists</p>
+    <p>Title: {{ meta.title }}</p>
+    <p>Description: {{ meta.description }}</p>
+{% else %}
+    <p>No meta object</p>
+{% endif %}
+
+<!-- Test render_meta -->
+{% render_meta meta %}
+```

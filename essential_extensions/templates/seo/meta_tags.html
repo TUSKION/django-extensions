@@ -1,0 +1,22 @@
+{# SEO Meta Tags Template #}
+
+{# Basic meta tags #}
+{% if title %}<meta name="title" content="{{ title|escape }}">{% endif %}
+{% if description %}<meta name="description" content="{{ description|escape }}">{% endif %}
+{% if keywords %}<meta name="keywords" content="{{ keywords|join:', '|escape }}">{% endif %}
+{% if author %}<meta name="author" content="{{ author|escape }}">{% endif %}
+{% if robots %}<meta name="robots" content="{{ robots|escape }}">{% endif %}
+
+{# Open Graph tags #}
+{% if title %}<meta property="og:title" content="{{ title|escape }}">{% endif %}
+{% if description %}<meta property="og:description" content="{{ description|escape }}">{% endif %}
+{% if image %}<meta property="og:image" content="{{ image|escape }}">{% endif %}
+{% if canonical_url %}<meta property="og:url" content="{{ canonical_url|escape }}">{% endif %}
+
+{# Twitter Card tags #}
+{% if title %}<meta name="twitter:title" content="{{ title|escape }}">{% endif %}
+{% if description %}<meta name="twitter:description" content="{{ description|escape }}">{% endif %}
+{% if image %}<meta name="twitter:image" content="{{ image|escape }}">{% endif %}
+
+{# Canonical URL #}
+{% if canonical_url %}<link rel="canonical" href="{{ canonical_url|escape }}">{% endif %} 
